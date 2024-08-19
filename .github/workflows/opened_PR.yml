@@ -1,0 +1,23 @@
+name: Teams Notification for opened PR
+on: 
+  pull_request_target:
+    types: [opened, reopened]
+    branches: "main"
+  workflow_call:
+    secrets:
+      TEAMS_WEBHOOK_PR_OPENED:
+        required: true
+
+jobs:
+  send-connector-card:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Send Teams a Card
+      uses: fjogeleit/http-request-action@v1
+      env: 
+        warning: "${{ contains(github.event.pull_request.title, 'fix') && '🔴' || '' }}"
+      with:
+          url: ${{ secrets.TEAMS_WEBHOOK_PR_OPENED }}
+          method: 'POST'
+          customHeaders: '{"Content-Type": "application/json"}'
+          data: '{"type":"message","attachments":[{"contentType":"application/vnd.microsoft.card.adaptive","content":{"type":"AdaptiveCard","body":[ { "type": "TextBlock", "text": "${{ env.warning }} ${{ github.event.pull_request.title }}", "wrap": true, "size": "large", "weight": "bolder" }, { "type": "TextBlock", "text": "From : ${{ github.triggering_actor }}", "wrap": true, "color": "Accent", "spacing": "None" }, { "type": "TextBlock", "text": "Repository : ${{ github.repository }}", "wrap": true, "color": "Accent", "spacing": "None" } ], "actions": [ { "type": "Action.OpenUrl", "title": "Review", "url": "https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}" } ],"$schema":"http://adaptivecards.io/schemas/adaptive-card.json","version":"1.0"}}]}'
