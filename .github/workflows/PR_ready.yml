@@ -1,0 +1,31 @@
+name: Teams Notification when PR is ready
+on: 
+  pull_request_review: 
+    types: [submitted]
+
+jobs:
+  send-connector-card:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Get Reviews Approvals
+      id: 'get_approvals'
+      uses: fjogeleit/http-request-action@v1
+      with:
+        url: https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews
+        method: 'GET'
+        customHeaders: '{"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}'
+        bearerToken: ${{ secrets.TEST_GITHUB_PERSONAL_TOKEN }}
+    - name: Parse approvals
+      id: parse_approvals
+      run: |
+        echo "::set-output name=approved_users::$(echo '${{ steps.get_approvals.outputs.response }}' | jq '[.[] | select(.state=="APPROVED") | .user.login] | unique | length')"
+        echo "::set-output name=changes_req::$(echo '${{ steps.get_approvals.outputs.response }}' | jq '[.[] | select(.state=="CHANGES_REQUESTED")] | length')"
+      shell: bash
+    - name: Send Teams a Card
+      if: ${{ steps.parse_approvals.outputs.approved_users >= 2 && steps.parse_approvals.outputs.changes_req == 0 }}
+      uses: fjogeleit/http-request-action@v1
+      with:
+        url: ${{ secrets.TEAMS_WEBHOOK_PR_READY }}
+        method: 'POST'
+        customHeaders: '{"Content-Type": "application/json"}'
+        data: '{"type":"message","attachments":[{"contentType":"application/vnd.microsoft.card.adaptive","content":{"type":"AdaptiveCard","body":[ { "type": "ColumnSet", "columns": [ { "type": "Column", "width": "50px", "items": [ { "type": "ImageSet", "images": [ { "type": "Image", "size": "Medium", "url": "https://cdn-icons-png.flaticon.com/512/25/25231.png" } ] } ] }, { "type": "Column", "width": "stretch", "items": [ { "type": "TextBlock", "size": "Large", "weight": "Bolder", "text": "${{ github.event.pull_request.title }}", "color": "Good" } ], "verticalContentAlignment": "Center" } ] }, { "type": "TextBlock", "text": "From : ${{ github.event.pull_request.user.login }}", "wrap": true, "spacing": "Small", "color": "Accent" }, { "type": "TextBlock", "text": "Repository : ${{ github.repository }}", "wrap": true, "color": "Accent", "spacing": "None" } ], "actions": [ { "type": "Action.OpenUrl", "title": "✅ Merge", "url": "https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}" } ],"$schema":"http://adaptivecards.io/schemas/adaptive-card.json","version":"1.0"}}]}'
